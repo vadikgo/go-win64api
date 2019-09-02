@@ -22,6 +22,7 @@ var (
 	usrNetLocalGroupAddMembers = modNetapi32.NewProc("NetLocalGroupAddMembers")
 	usrNetLocalGroupDelMembers = modNetapi32.NewProc("NetLocalGroupDelMembers")
 	usrNetApiBufferFree        = modNetapi32.NewProc("NetApiBufferFree")
+	usrDsGetDcNameA            = modNetapi32.NewProc("DsGetDcNameA")
 )
 
 const (
@@ -58,6 +59,18 @@ const (
 	USER_UF_NORMAL_ACCOUNT     = 512
 	USER_UF_DONT_EXPIRE_PASSWD = 65536
 )
+
+type DOMAIN_CONTROLLER_INFOA struct {
+	DomainControllerName        *uint16
+	DomainControllerAddress     *uint16
+	DomainControllerAddressType uint32
+	DomainGuid                  *uint16
+	DomainName                  *uint16
+	DnsForestName               *uint16
+	Flags                       uint32
+	DcSiteName                  *uint16
+	ClientSiteName              *uint16
+}
 
 type USER_INFO_1 struct {
 	Usri1_name         *uint16
@@ -505,12 +518,21 @@ func DomainUserLocked(username string, domain string) (bool, error) {
 			return false, fmt.Errorf("Unable to encode domain to UTF16")
 		}
 
-		_, _, _ = usrNetGetAnyDCName.Call(
-			uintptr(0),                        // servername
-			uintptr(unsafe.Pointer(dPointer)), // domainame
-			uintptr(unsafe.Pointer(&dcPointer)),
+		/*		_, _, _ = usrNetGetAnyDCName.Call(
+				uintptr(0),                        // servername
+				uintptr(unsafe.Pointer(dPointer)), // domainame
+				uintptr(unsafe.Pointer(&dcPointer)),
+			)*/
+		_, _, _ = usrDsGetDcNameA.Call(
+			uintptr(0),                        // ComputerName
+			uintptr(unsafe.Pointer(dPointer)), // DomainName
+			uintptr(0),                        // *DomainGuid
+			uintptr(0),                        // SiteName
+			0,
+			uintptr(unsafe.Pointer(&dcPointer)), // DomainControllerInfo
 		)
-		servername = uintptr(dcPointer)
+		var dcinfo = (*DOMAIN_CONTROLLER_INFOA)(unsafe.Pointer(dcPointer))
+		servername = uintptr(unsafe.Pointer(dcinfo.DomainControllerName))
 		defer usrNetApiBufferFree.Call(uintptr(unsafe.Pointer(dcPointer)))
 	} else {
 		servername = uintptr(0)
